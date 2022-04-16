@@ -122,3 +122,11 @@ body {
 .rmdp-panel {
   width: 9rem;
 }
+
+
+tr td:first-child, tr th:first-child {
+  border-right: 2px solid #dbdbdb !important;
+}
+th, td {
+  text-align: center !important;
+}

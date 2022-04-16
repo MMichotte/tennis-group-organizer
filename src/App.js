@@ -108,8 +108,8 @@ function App() {
           warnings.push(`Not enough available players for the ${gd.date}!`);
           break;
         }
-    
-        const excludedDates = shuffledPlayers[idx].excludeDates.map( d => {
+
+        const excludedDates = shuffledPlayers[idx].excludeDates.map(d => {
           return (new Date(d)).toISOString().split('T')[0];
         });
         if (!excludedDates.includes(gd.date)) {
@@ -223,7 +223,7 @@ function App() {
           <ReactHTMLTableToExcel
             table="planning_table"
             className="button is-info"
-            filename="Tennis_Planning"
+            filename="Tennis_Planning.xlsx"
             sheet="Planning"
             buttonText="Download as xls"
             disabled={!validData}
@@ -236,20 +236,29 @@ function App() {
             <table className='table is-striped is-fullwidth' id='planning_table'>
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th colSpan={4}>Players</th>
+                  <th style={{width: '8rem'}}>Date</th>
+                  {
+                    players.map((player, idx) => {
+                      return (
+                        <th key={idx}>{player.name} ({player.playCount})</th>
+                      )
+                    })
+                  }
                 </tr>
               </thead>
               <tbody>
                 {gameDates.map((date, idx) => {
                   return (
                     <tr key={idx}>
-                      <td>{date.date}</td>
-                      {date.players.map((player, pidx) => {
-                        return (
-                          <td key={pidx}>{player}</td>
-                        )
-                      })}
+                      <td style={{width: '8rem'}}>{date.date}</td>
+                      {
+                        players.map((player, pidx) => {
+                          return (
+                            date.players.includes(players[pidx]?.name) ?
+                            <td>✅</td> : <td>❌</td>
+                          )
+                        })
+                      }
                     </tr>
                   )
                 })
@@ -257,29 +266,6 @@ function App() {
               </tbody>
             </table>
 
-          </div>
-
-          <div className='result-container'>
-            <div className='form-title'>Balance :</div>
-            <table className='table is-striped is-fullwidth'>
-              <thead>
-                <tr>
-                  <th>Player</th>
-                  <th>Play Count</th>
-                </tr>
-              </thead>
-              <tbody>
-                {players.map((player, idx) => {
-                  return (
-                    <tr key={idx}>
-                      <td>{player.name}</td>
-                      <td>{player.playCount}</td>
-                    </tr>
-                  )
-                })
-                }
-              </tbody>
-            </table>
           </div>
         </div>
 
