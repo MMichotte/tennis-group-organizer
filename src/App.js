@@ -1,19 +1,23 @@
 import './App.scss';
 import 'bulma/css/bulma.min.css';
 
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 
 import DatePicker, { Calendar } from "react-multi-date-picker";
 import DatePanel from "react-multi-date-picker/plugins/date_panel";
 import "react-multi-date-picker/styles/colors/red.css";
-import ReactHTMLTableToExcel from "react-html-table-to-excel";
 import arrayShuffle from 'array-shuffle';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
+const XLSX = require("xlsx");
+
+
 function App() {
 
   const [dates, setDates] = useState([]);
+  const [isValidToGenerate, setIsValidToGenerate] = useState(false);
+  const [isValidToExport, setIsValidToExport] = useState(false);
   const [gameDates, setGameDates] = useState([]);
   const [players, setPlayers] = useState([
     {
@@ -22,7 +26,6 @@ function App() {
       playCount: null
     },
   ]);
-  const [validData, setValidData] = useState(false);
   let warnings = [];
 
   const onSetDates = (dates) => {
@@ -35,12 +38,6 @@ function App() {
     setDates(dates);
   }
 
-  const onPlayerChange = (player, idx) => {
-    const newPlayers = [...players];
-    newPlayers[idx] = player;
-    setPlayers(newPlayers);
-    clearPlanningTable();
-  }
 
   const onAddPlayer = () => {
     const newPlayers = [...players];
@@ -55,8 +52,21 @@ function App() {
     clearPlanningTable();
   }
 
+  const onChangePlayer = (player, idx) => {
+    const oldPlayers = [...players]
+    oldPlayers.splice(idx, 1);
+    const existingPlayer = oldPlayers.find(p => p.name === player.name);
+    if (existingPlayer) {
+      toast.error('Player names must be unique.', {autoClose:5000});
+      setIsValidToGenerate(false);
+      return;
+    }
+    setIsValidToGenerate(true);
+    clearPlanningTable();
+  }
+
   const onRemovePlayer = (idx) => {
-    const newPlayers = [...players];
+    const newPlayers = [...players]
     newPlayers.splice(idx, 1);
     if (newPlayers.length === 0) {
       setPlayers([{
@@ -75,12 +85,18 @@ function App() {
     newGameDates.forEach(gd => {
       gd.players = [];
     });
-    setValidData(false);
+    setIsValidToExport(false);
     setGameDates(newGameDates);
   }
 
+  const onInputKeyPress = (event) => {
+    if (event.key === 'Enter') {
+      onAddPlayer();
+    }
+  }
+
   const onGeneratePlanning = () => {
-    setValidData(false);
+    setIsValidToExport(false);
 
     if (gameDates.length === 0 || players.length === 0) return;
     const currentPlayers = [];
@@ -97,12 +113,23 @@ function App() {
     currentPlayers.forEach(player => {
       player.playCount = 0;
     });
+
+
     for (const gd of currentGameDates) {
-      gd.players = [];
+      gd.players = players.map(player => {
+        return {
+          name: player.name,
+          isPlaying: false
+        }
+      });
+
       const shuffledPlayers = arrayShuffle(currentPlayers);
       shuffledPlayers.sort((a, b) => { return a.playCount - b.playCount });
+
       let idx = 0;
-      while (gd.players.length !== 4) {
+      let playingAtDate = gd.players.filter(p => p.isPlaying).length;
+
+      while (playingAtDate !== 4) {
 
         if (idx >= shuffledPlayers.length) {
           warnings.push(`Not enough available players for the ${gd.date}!`);
@@ -113,10 +140,18 @@ function App() {
           return (new Date(d)).toISOString().split('T')[0];
         });
         if (!excludedDates.includes(gd.date)) {
-          gd.players.push(shuffledPlayers[idx].name);
+          const currentPlayerName = shuffledPlayers[idx].name;
+          gd.players.forEach( player => {
+            if (player.name === currentPlayerName) {
+              player.isPlaying = true;
+            }
+          });
+
+          gd.players.push();
           shuffledPlayers[idx].playCount += 1;
         }
         idx += 1;
+        playingAtDate = gd.players.filter(p => p.isPlaying).length;
 
 
       }
@@ -137,20 +172,26 @@ function App() {
         }
       </div>
 
-      toast.warn(warnMessage);
+      toast.warn(warnMessage, {autoClose:10000});
     }
-
     setPlayers(currentPlayers);
     setGameDates(currentGameDates);
-    setValidData(true);
+    setIsValidToExport(true);
 
+  }
+
+  const exportToExcel = () => {
+    const table_elt = document.getElementById("planning_table");
+    const workbook = XLSX.utils.table_to_book(table_elt);
+    const ws = workbook.Sheets["Planning"];
+    XLSX.utils.sheet_add_aoa(ws, [[]], {origin:-1});
+    XLSX.writeFile(workbook, "Tennis_Planning.xlsx");
   }
 
   return (
     <>
       <ToastContainer
         position="top-right"
-        autoClose={10000}
         hideProgressBar={false}
         newestOnTop={false}
         closeOnClick
@@ -185,12 +226,14 @@ function App() {
             {players.map((player, idx) => {
               return (
                 <div className='player-from' key={idx}>
-                  <input className='input player-name' type="text" name='Name' placeholder="Player's name" autoFocus={true}
+                  <input className='input player-name' type="text" name='Name' placeholder="Player's name"
+                    autoFocus={true}
                     value={player.name}
                     onChange={(e) => {
                       player.name = e.target.value;
-                      onPlayerChange(player, idx)
+                      onChangePlayer(player, idx)
                     }}
+                    onKeyPress={onInputKeyPress}
                   />
                   <DatePicker
                     className="red"
@@ -199,7 +242,7 @@ function App() {
                     value={player.excludeDates}
                     onChange={(dates) => {
                       player.excludeDates = dates;
-                      onPlayerChange(player, idx);
+                      onChangePlayer(player, idx);
                     }}
                     placeholder='Exclude dates'
                     plugins={[
@@ -219,15 +262,8 @@ function App() {
         </div>
 
         <div className='controls'>
-          <button className='button is-success' onClick={onGeneratePlanning}>Generate Planning</button>
-          <ReactHTMLTableToExcel
-            table="planning_table"
-            className="button is-info"
-            filename="Tennis_Planning.xlsx"
-            sheet="Planning"
-            buttonText="Download as xls"
-            disabled={!validData}
-          />
+          <button className='button is-success' onClick={onGeneratePlanning} disabled={!isValidToGenerate}>Generate Planning</button>
+          <button className='button is-info' onClick={exportToExcel} disabled={!isValidToExport}>Export to Excel</button>
         </div>
 
         <div className="result">
@@ -236,11 +272,17 @@ function App() {
             <table className='table is-striped is-fullwidth' id='planning_table'>
               <thead>
                 <tr>
-                  <th style={{width: '8rem'}}>Date</th>
+                  <th style={{ width: '8rem' }}>Date</th>
                   {
                     players.map((player, idx) => {
                       return (
-                        <th key={idx}>{player.name} ({player.playCount})</th>
+                        <th key={idx}>
+                          {
+                            player.name !== '' ?
+                            <>{player.name} ({player.playCount})</>:
+                            <></>
+                          }
+                        </th>
                       )
                     })
                   }
@@ -250,12 +292,12 @@ function App() {
                 {gameDates.map((date, idx) => {
                   return (
                     <tr key={idx}>
-                      <td style={{width: '8rem'}}>{date.date}</td>
+                      <td style={{ width: '8rem' }}>{date.date}</td>
                       {
-                        players.map((player, pidx) => {
+                        date.players?.map((player, pidx) => {
                           return (
-                            date.players.includes(players[pidx]?.name) ?
-                            <td>✅</td> : <td>❌</td>
+                            player.isPlaying ? 
+                              <td key={pidx}>✅</td> : <td key={pidx}>❌</td>
                           )
                         })
                       }
