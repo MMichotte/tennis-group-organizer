@@ -1,0 +1,22 @@
+version: '2'
+
+services:
+
+  tennis-organizer-app:
+    image: node:14.15.1
+    container_name: tennis-organizer-app
+    restart: unless-stopped
+    volumes:
+      - ./www:/var/www
+    expose:
+      - 8080
+    networks:
+      vps-martin-network:
+        ipv4_address: 192.168.10.51
+    command: bash -c "cd /var/www && npm i --prod && node ./server"
+
+#--------------------
+
+networks:
+    vps-martin-network:
+      external: true
