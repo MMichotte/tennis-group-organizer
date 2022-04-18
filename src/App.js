@@ -9,6 +9,9 @@ import "react-multi-date-picker/styles/colors/red.css";
 import arrayShuffle from 'array-shuffle';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { faTrashCan } from "@fortawesome/free-regular-svg-icons";
+import { faDownload, faWrench } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
 import exportToExcel from './helpers/export-to-excel';
 
@@ -96,6 +99,30 @@ function App() {
     }
   }
 
+  const penalizeAbsentPlayers = (playerList) => {
+    /*
+    This function penalizes players who have excludedDates compared to others
+    so they can never have more playCounts than players who don't have excludedDates.
+    TODO -> this can probably be optimized but we have to test before spending more time on this. 
+    */
+    const alreadyPenalizedPlayers = [];
+    for (const idx in playerList) {
+      const player = playerList[idx];
+      
+      if (player.excludeDates.length && idx < (playerList.length -1))  {
+        if (alreadyPenalizedPlayers.includes(player.name)) continue;
+        const indexOfGoodPlayerToSwap = playerList.findIndex((pl, index) => {
+          return (index > idx && !pl.excludeDates.length && pl.playCount === player.playCount)
+        });
+        if (indexOfGoodPlayerToSwap < idx) break;
+        const playerToSwap = player;
+        playerList[idx] = playerList[indexOfGoodPlayerToSwap];
+        playerList[indexOfGoodPlayerToSwap] = playerToSwap;
+        alreadyPenalizedPlayers.push(player.name);
+      }
+    };
+  }
+
   const onGeneratePlanning = () => {
     setIsValidToExport(false);
 
@@ -115,7 +142,7 @@ function App() {
       player.playCount = 0;
     });
 
-
+    let idxx = 0;
     for (const gd of currentGameDates) {
       gd.players = players.map(player => {
         return {
@@ -124,18 +151,10 @@ function App() {
         }
       });
 
-      const shuffledPlayers = arrayShuffle(currentPlayers);
-      shuffledPlayers.sort((a, b) => {
+      const shuffledPlayers = arrayShuffle(currentPlayers).sort((a, b) => { 
         return a.playCount - b.playCount 
       });
-      /*
-      shuffledPlayers.sort((a, b) => { 
-        if (a.playCount === b.playCount) {
-          return a.excludeDates.length - b.excludeDates.length
-        }
-        return a.playCount - b.playCount 
-      });
-      */
+      penalizeAbsentPlayers(shuffledPlayers);
 
       let idx = 0;
       let playingAtDate = gd.players.filter(p => p.isPlaying).length;
@@ -254,7 +273,7 @@ function App() {
                     ]}
                   />
                   <button className="button is-danger" onClick={() => onRemovePlayer(idx)}>
-                    <span>-</span>
+                    <FontAwesomeIcon icon={faTrashCan} />
                   </button>
                 </div>
               )
@@ -266,8 +285,14 @@ function App() {
         </div>
 
         <div className='controls'>
-          <button className='button is-success' onClick={onGeneratePlanning} disabled={!isValidToGenerate}>Generate Planning</button>
-          <button className='button is-info' onClick={onExportToExcel} disabled={!isValidToExport}>Export to Excel</button>
+          <button className='button is-success' onClick={onGeneratePlanning} disabled={!isValidToGenerate}>
+            <FontAwesomeIcon className='fa-inline' icon={faWrench} />
+            Generate Planning
+          </button>
+          <button className='button is-info' onClick={onExportToExcel} disabled={!isValidToExport}>
+            <FontAwesomeIcon className='fa-inline' icon={faDownload} />
+            Export to Excel
+          </button>
         </div>
 
         <div className="result">
