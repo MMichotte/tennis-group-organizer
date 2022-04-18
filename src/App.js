@@ -10,14 +10,14 @@ import arrayShuffle from 'array-shuffle';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-const XLSX = require("xlsx");
-
+import exportToExcel from './helpers/export-to-excel';
 
 function App() {
 
   const [dates, setDates] = useState([]);
   const [isValidToGenerate, setIsValidToGenerate] = useState(false);
   const [isValidToExport, setIsValidToExport] = useState(false);
+  const [numberOfPlayersPerGame, setNumberOfPlayersPerGame] = useState(4);
   const [gameDates, setGameDates] = useState([]);
   const [players, setPlayers] = useState([
     {
@@ -37,6 +37,7 @@ function App() {
     }));
     setDates(dates);
   }
+
 
 
   const onAddPlayer = () => {
@@ -124,12 +125,22 @@ function App() {
       });
 
       const shuffledPlayers = arrayShuffle(currentPlayers);
-      shuffledPlayers.sort((a, b) => { return a.playCount - b.playCount });
+      shuffledPlayers.sort((a, b) => {
+        return a.playCount - b.playCount 
+      });
+      /*
+      shuffledPlayers.sort((a, b) => { 
+        if (a.playCount === b.playCount) {
+          return a.excludeDates.length - b.excludeDates.length
+        }
+        return a.playCount - b.playCount 
+      });
+      */
 
       let idx = 0;
       let playingAtDate = gd.players.filter(p => p.isPlaying).length;
 
-      while (playingAtDate !== 4) {
+      while (playingAtDate !== +numberOfPlayersPerGame) {
 
         if (idx >= shuffledPlayers.length) {
           warnings.push(`Not enough available players for the ${gd.date}!`);
@@ -159,33 +170,22 @@ function App() {
     };
 
     if (warnings.length !== 0) {
-      const warnMessage = <div>
-        {
-          warnings.map((warn, idx) => {
-            return (
-              <>
-                {warn}
-                <br />
-              </>
-            )
-          })
-        }
-      </div>
-
+      const warnMessage = <div>{
+        warnings.map((warn, idx) => {
+          return (<>{warn}<br /></>);
+        })
+      }</div>
       toast.warn(warnMessage, {autoClose:10000});
     }
+    
     setPlayers(currentPlayers);
     setGameDates(currentGameDates);
     setIsValidToExport(true);
 
   }
 
-  const exportToExcel = () => {
-    const table_elt = document.getElementById("planning_table");
-    const workbook = XLSX.utils.table_to_book(table_elt);
-    const ws = workbook.Sheets["Planning"];
-    XLSX.utils.sheet_add_aoa(ws, [[]], {origin:-1});
-    XLSX.writeFile(workbook, "Tennis_Planning.xlsx");
+  const onExportToExcel = () => {
+    exportToExcel("planning_table", "Planning", "Tennis_Planning.xlsx");
   }
 
   return (
@@ -210,6 +210,10 @@ function App() {
         <div className='settings'>
           <div className="form-container date-picker">
             <div className='form-title'>Play dates :</div>
+            <div className='num-players-container'>
+              <span className='num-players-label'>N° of players/game :</span>
+              <input type='number' className='input num-players-input' min={2} value={numberOfPlayersPerGame} onChange={ (e) => {setNumberOfPlayersPerGame(e.target.value)}}/>
+            </div>
             <Calendar
               multiple
               sort={true}
@@ -263,7 +267,7 @@ function App() {
 
         <div className='controls'>
           <button className='button is-success' onClick={onGeneratePlanning} disabled={!isValidToGenerate}>Generate Planning</button>
-          <button className='button is-info' onClick={exportToExcel} disabled={!isValidToExport}>Export to Excel</button>
+          <button className='button is-info' onClick={onExportToExcel} disabled={!isValidToExport}>Export to Excel</button>
         </div>
 
         <div className="result">

@@ -46,6 +46,18 @@ body {
     .form-container {
       margin: 1rem 2rem;
 
+      .num-players-container {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+
+        .num-players-input {
+          max-width: 25%;
+        }
+      }
+
       .player-from {
         display: flex;
         flex-wrap: wrap;
