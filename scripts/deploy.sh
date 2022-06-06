@@ -54,7 +54,7 @@ check_error "✓ Backend successfully built."
 
 #--------------------
 echo -e $BLUE"\n3. 🏗  Building Frontend :"$RESET
-npm i --prodction --silent &&
+npm i --silent &&
 npm run build --production --silent &&
 mv ./build/* ./temp/app/www/public/ &&
 

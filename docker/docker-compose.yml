@@ -10,6 +10,12 @@ services:
       - ./www:/var/www
     expose:
       - 8080
+    healthcheck:
+      test: curl --fail http://localhost:8080 || exit 1
+      interval: 60s
+      retries: 5
+      start_period: 60s
+      timeout: 10s
     networks:
       vps-martin-network:
         ipv4_address: 192.168.10.51
