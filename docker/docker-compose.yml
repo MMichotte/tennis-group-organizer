@@ -1,4 +1,4 @@
-version: '2'
+version: '3.4'
 
 services:
 
@@ -17,12 +17,11 @@ services:
       start_period: 60s
       timeout: 10s
     networks:
-      vps-martin-network:
-        ipv4_address: 192.168.10.51
+      - lnx-vm-1-network
     command: bash -c "cd /var/www && npm i --prod && node ./server"
 
 #--------------------
 
 networks:
-    vps-martin-network:
+  lnx-vm-1-network:
       external: true
