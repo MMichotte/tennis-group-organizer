@@ -1,27 +1,16 @@
 version: '3.4'
 
 services:
-
   tennis-organizer-app:
-    image: node:14.15.1
+    image: mmichotte/tennis-organizer-app:latest
     container_name: tennis-organizer-app
     restart: unless-stopped
-    volumes:
-      - ./www:/var/www
-    expose:
-      - 8080
+    ports:
+      - 8080:8080
     healthcheck:
       test: curl --fail http://localhost:8080 || exit 1
       interval: 60s
       retries: 5
       start_period: 60s
       timeout: 10s
-    networks:
-      - lnx-vm-1-network
-    command: bash -c "cd /var/www && npm i --prod && node ./server"
-
-#--------------------
-
-networks:
-  lnx-vm-1-network:
-      external: true
+    
