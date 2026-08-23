@@ -39,13 +39,18 @@ body {
     font-family: BlinkMacSystemFont, -apple-system, "Segoe UI", Roboto, sans-serif;
     padding: 0.35rem 0.5rem;
     border-radius: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    background: rgba(255, 255, 255, 0.15);
-    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    background: #ffffff;
+    color: #2e5e4e;
     cursor: pointer;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.25);
+      background: #f4f0ea;
+    }
+
+    option {
+      background: #ffffff;
+      color: #1f1f1f;
     }
   }
 }
