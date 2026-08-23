@@ -1,22 +1,27 @@
-FROM node:14.15.1 AS frontend-build
+FROM node:22-alpine AS frontend-build
 
 WORKDIR /app
 
 COPY ./public ./public
 COPY ./src ./src
+COPY ./index.html ./
+COPY ./vite.config.ts ./tsconfig.json ./
 COPY ./package*.json ./
 
-RUN npm install --silent
-RUN npm run build --production --silent
+RUN npm ci --silent
+RUN npm run build --silent
 
-FROM node:14.15.1-alpine
+FROM node:22-alpine
 
 WORKDIR /var/www
 
 COPY ./server.js ./
 COPY ./package*.json ./
-RUN npm install --production --silent && npm cache clean --force
+RUN npm ci --omit=dev --silent && npm cache clean --force
 
-COPY --from=frontend-build /app/build ./public
+COPY --from=frontend-build /app/dist ./public
+
+ENV PORT=8080
+EXPOSE 8080
 
 CMD ["node", "server.js"]
