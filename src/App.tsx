@@ -1,52 +1,67 @@
 import { useCallback, useRef, useState } from 'react';
 
-import { faTrashCan } from '@fortawesome/free-regular-svg-icons';
-import { faDownload, faFileImport, faWrench } from '@fortawesome/free-solid-svg-icons';
+import {
+  faDownload,
+  faFileImport,
+  faFilePdf,
+  faWrench,
+} from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import DatePicker, { Calendar } from 'react-multi-date-picker';
-import DatePanel from 'react-multi-date-picker/plugins/date_panel';
-import 'react-multi-date-picker/styles/colors/red.css';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 import 'bulma/css/bulma.min.css';
 import './App.scss';
 
-import { toDate, toDateKey } from './helpers/dates';
+import { CalendarForm } from './components/CalendarForm';
+import { DocumentForm } from './components/DocumentForm';
+import { PlanningTable } from './components/PlanningTable';
+import { PlayersForm } from './components/PlayersForm';
+import { ReplacementsForm } from './components/ReplacementsForm';
+import { toDateKey } from './helpers/dates';
+import { exportToPdf } from './helpers/export-to-pdf';
 import { generatePlanning } from './helpers/generate-planning';
 import { exportToExcel, importSpreadsheet } from './helpers/spreadsheet';
-import type { GameDate, Player } from './types';
-
-const createPlayer = (): Player => ({
-  id: crypto.randomUUID(),
-  name: '',
-  excludeDates: [],
-  playCount: 0,
-});
+import { createPlayer, createReplacementPlayer } from './types';
+import type { GameDate, Player, ReplacementPlayer } from './types';
 
 const normalizeName = (name: string): string => name.trim().toLowerCase();
 
-const DATE_COLUMN_WIDTH = '8rem';
-const MIN_PLAYERS_PER_GAME = 2;
-const MAX_PLAYERS_PER_GAME = 32;
+const toFileName = (title: string, extension: string): string => {
+  const slug = title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gi, '-')
+    .replace(/^-+|-+$/g, '');
+  return `${slug || 'tennis-planning'}.${extension}`;
+};
 
 function App() {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [playDates, setPlayDates] = useState<Date[]>([]);
   const [gameDates, setGameDates] = useState<GameDate[]>([]);
   const [players, setPlayers] = useState<Player[]>([createPlayer()]);
+  const [replacements, setReplacements] = useState<ReplacementPlayer[]>([
+    createReplacementPlayer(),
+  ]);
   const [playersPerGame, setPlayersPerGame] = useState(4);
   const [canExport, setCanExport] = useState(false);
+  const [openPlayerDetails, setOpenPlayerDetails] = useState<Set<string>>(new Set());
+  const [replacementsOpen, setReplacementsOpen] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastPlayerInputRef = useRef<HTMLInputElement>(null);
+  const lastReplacementInputRef = useRef<HTMLInputElement>(null);
 
-  const hasError = players.some(
+  const hasDuplicatePlayers = players.some(
     (player) =>
       player.name.trim() !== '' &&
       players.filter((p) => normalizeName(p.name) === normalizeName(player.name)).length >
         1,
   );
   const namedPlayerCount = players.filter((p) => p.name.trim() !== '').length;
-  const canGenerate = namedPlayerCount >= 1 && !hasError;
+  const canGenerate = title.trim() !== '' && namedPlayerCount >= 1 && !hasDuplicatePlayers;
 
   const resetSchedule = useCallback(() => {
     setGameDates((prev) => prev.map((gd) => ({ ...gd, players: [] })));
@@ -99,12 +114,14 @@ function App() {
       setPlayers((prev) =>
         prev.map((player) => (player.id === id ? { ...player, ...patch } : player)),
       );
-      resetSchedule();
+      if (patch.name !== undefined) {
+        resetSchedule();
+      }
     },
     [players, resetSchedule],
   );
 
-  const onKeyDown = useCallback(
+  const onPlayerKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>) => {
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -112,6 +129,52 @@ function App() {
       }
     },
     [onAddPlayer],
+  );
+
+  const togglePlayerDetails = useCallback((id: string) => {
+    setOpenPlayerDetails((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const onAddReplacement = useCallback(() => {
+    setReplacements((prev) => [...prev, createReplacementPlayer()]);
+    // Focus the new replacement's name field once it has rendered.
+    requestAnimationFrame(() => lastReplacementInputRef.current?.focus());
+  }, []);
+
+  const onRemoveReplacement = useCallback((id: string) => {
+    setReplacements((prev) => {
+      const remaining = prev.filter((replacement) => replacement.id !== id);
+      return remaining.length === 0 ? [createReplacementPlayer()] : remaining;
+    });
+  }, []);
+
+  const onUpdateReplacement = useCallback(
+    (id: string, patch: Partial<ReplacementPlayer>) => {
+      setReplacements((prev) =>
+        prev.map((replacement) =>
+          replacement.id === id ? { ...replacement, ...patch } : replacement,
+        ),
+      );
+    },
+    [],
+  );
+
+  const onReplacementKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        onAddReplacement();
+      }
+    },
+    [onAddReplacement],
   );
 
   const onGenerate = useCallback(() => {
@@ -136,11 +199,26 @@ function App() {
   }, [gameDates, players, playersPerGame]);
 
   const onExportExcel = useCallback(() => {
-    exportToExcel('planning_table', 'Planning', 'Tennis_Planning.xlsx').catch((error) => {
+    exportToExcel('planning_table', toFileName(title, 'xlsx'), {
+      title,
+      description,
+      players,
+      replacements,
+    }).catch((error) => {
       console.error(error);
       toast.error('Could not export the planning to Excel.', { autoClose: 5000 });
     });
-  }, []);
+  }, [description, players, replacements, title]);
+
+  const onExportPdf = useCallback(() => {
+    exportToPdf(
+      { title, description, players, replacements, gameDates },
+      toFileName(title, 'pdf'),
+    ).catch((error) => {
+      console.error(error);
+      toast.error('Could not export the planning to PDF.', { autoClose: 5000 });
+    });
+  }, [description, gameDates, players, replacements, title]);
 
   const onImportFile = useCallback(
     async (input: React.ChangeEvent<HTMLInputElement>) => {
@@ -150,7 +228,12 @@ function App() {
 
       try {
         const imported = await importSpreadsheet(file);
+        setTitle(imported.title);
+        setDescription(imported.description);
         setPlayers(imported.players);
+        setReplacements(
+          imported.replacements.length > 0 ? imported.replacements : [createReplacementPlayer()],
+        );
         setPlayDates(imported.playDates);
         setGameDates(imported.gameDates);
         setCanExport(true);
@@ -189,72 +272,43 @@ function App() {
       </div>
 
       <div className="main-content">
+        <DocumentForm
+          title={title}
+          description={description}
+          onTitleChange={setTitle}
+          onDescriptionChange={setDescription}
+        />
+
         <div className="settings">
-          <div className="form-container date-picker">
-            <div className="form-title">Play dates :</div>
-            <div className="num-players-container">
-              <span className="num-players-label">N° of players/game :</span>
-              <input
-                type="number"
-                className="input num-players-input"
-                min={MIN_PLAYERS_PER_GAME}
-                max={MAX_PLAYERS_PER_GAME}
-                value={playersPerGame}
-                onChange={(event) => {
-                  const value = Math.trunc(Number(event.target.value));
-                  if (Number.isNaN(value)) return;
-                  setPlayersPerGame(
-                    Math.min(MAX_PLAYERS_PER_GAME, Math.max(MIN_PLAYERS_PER_GAME, value)),
-                  );
-                }}
-              />
-            </div>
-            <Calendar
-              multiple
-              sort={true}
-              value={playDates}
-              onChange={(dates) => onSetPlayDates(dates.map((date) => toDate(date)))}
-              plugins={[<DatePanel key="date-panel" />]}
-            />
-          </div>
+          <CalendarForm
+            playDates={playDates}
+            playersPerGame={playersPerGame}
+            onSetPlayDates={onSetPlayDates}
+            onPlayersPerGameChange={setPlayersPerGame}
+          />
 
           <div className="form-container players">
             <div className="form-title">Players :</div>
-            {players.map((player, idx) => (
-              <div className="player-from" key={player.id}>
-                <input
-                  className="input player-name"
-                  type="text"
-                  placeholder="Player's name"
-                  autoFocus={idx === 0 && players.length === 1}
-                  ref={idx === players.length - 1 ? lastPlayerInputRef : undefined}
-                  value={player.name}
-                  onChange={(event) =>
-                    onUpdatePlayer(player.id, { name: event.target.value })
-                  }
-                  onKeyDown={onKeyDown}
-                />
-                <DatePicker
-                  className="red"
-                  multiple
-                  sort={true}
-                  value={player.excludeDates}
-                  onChange={(dates) =>
-                    onUpdatePlayer(player.id, {
-                      excludeDates: dates.map((date) => toDate(date)),
-                    })
-                  }
-                  placeholder="Exclude dates"
-                  plugins={[<DatePanel key="date-panel" />]}
-                />
-                <button className="button is-danger" onClick={() => onRemovePlayer(player.id)}>
-                  <FontAwesomeIcon icon={faTrashCan} />
-                </button>
-              </div>
-            ))}
-            <button className="button is-success" onClick={onAddPlayer}>
-              <span>+</span>
-            </button>
+            <PlayersForm
+              players={players}
+              openPlayerDetails={openPlayerDetails}
+              lastPlayerInputRef={lastPlayerInputRef}
+              onToggleDetails={togglePlayerDetails}
+              onAddPlayer={onAddPlayer}
+              onRemovePlayer={onRemovePlayer}
+              onUpdatePlayer={onUpdatePlayer}
+              onPlayerKeyDown={onPlayerKeyDown}
+            />
+            <ReplacementsForm
+              replacements={replacements}
+              open={replacementsOpen}
+              lastReplacementInputRef={lastReplacementInputRef}
+              onToggleOpen={() => setReplacementsOpen((open) => !open)}
+              onAddReplacement={onAddReplacement}
+              onRemoveReplacement={onRemoveReplacement}
+              onUpdateReplacement={onUpdateReplacement}
+              onReplacementKeyDown={onReplacementKeyDown}
+            />
           </div>
         </div>
 
@@ -266,6 +320,10 @@ function App() {
           <button className="button is-info" onClick={onExportExcel} disabled={!canExport}>
             <FontAwesomeIcon className="fa-inline" icon={faDownload} />
             Export to Excel
+          </button>
+          <button className="button is-info" onClick={onExportPdf} disabled={!canExport}>
+            <FontAwesomeIcon className="fa-inline" icon={faFilePdf} />
+            Export to PDF
           </button>
           <input
             ref={fileInputRef}
@@ -284,33 +342,7 @@ function App() {
         </div>
 
         <div className="result">
-          <div className="result-container planning">
-            <div className="form-title">Planning :</div>
-            <table className="table is-striped is-fullwidth" id="planning_table">
-              <thead>
-                <tr>
-                  <th style={{ width: DATE_COLUMN_WIDTH }}>Date</th>
-                  {players.map((player) =>
-                    player.name.trim() !== '' ? (
-                      <th key={player.id}>
-                        {player.name} ({player.playCount})
-                      </th>
-                    ) : null,
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {gameDates.map((gameDate) => (
-                  <tr key={gameDate.date}>
-                    <td style={{ width: DATE_COLUMN_WIDTH }}>{gameDate.date}</td>
-                    {gameDate.players.map((slot) => (
-                      <td key={slot.id}>{slot.isPlaying ? '✅' : '❌'}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <PlanningTable title={title} players={players} gameDates={gameDates} />
         </div>
       </div>
     </>

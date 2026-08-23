@@ -1,4 +1,5 @@
-import type { GameDate, Player } from '../types';
+import type { GameDate, Player, ReplacementPlayer } from '../types';
+import { toDateKey } from './dates';
 
 const loadXlsx = (): Promise<typeof import('xlsx')> => import('xlsx');
 
@@ -10,31 +11,62 @@ const getTableElement = (htmlTableId: string): HTMLElement => {
   return tableElement;
 };
 
+export interface ExportDocument {
+  title: string;
+  description: string;
+  players: Player[];
+  replacements: ReplacementPlayer[];
+}
+
 /**
- * Exports the HTML table identified by `htmlTableId` as an .xlsx file.
- * Cells are written verbatim as text so dates keep their YYYY-MM-DD form and
- * can be re-imported losslessly.
+ * Exports the planning as an .xlsx file with the following layout:
+ * title row, description row, planning table ("Date" + one column per player),
+ * then a "Players" section (Name/Email/Phone/Games) and a "Replacements"
+ * section (Name/Email/Phone). Cells are written verbatim as text so dates
+ * keep their YYYY-MM-DD form and can be re-imported losslessly.
  */
 export const exportToExcel = async (
   htmlTableId: string,
-  sheetName: string,
   fileName: string,
+  document: ExportDocument,
 ): Promise<void> => {
   const XLSX = await loadXlsx();
   const table = getTableElement(htmlTableId) as HTMLTableElement;
 
-  const rows = Array.from(table.rows).map((row) =>
+  const planningRows = Array.from(table.rows).map((row) =>
     Array.from(row.cells).map((cell) => (cell.textContent ?? '').trim()),
   );
+
+  const rows: string[][] = [
+    [document.title],
+    [document.description],
+    [],
+    ...planningRows,
+    [],
+    ['Players'],
+    ['Name', 'Email', 'Phone', 'Games'],
+    ...document.players.map((player) => [
+      player.name,
+      player.email ?? '',
+      player.phone ?? '',
+      String(player.playCount),
+    ]),
+    ['Replacements'],
+    ['Name', 'Email', 'Phone'],
+    ...document.replacements.map((replacement) => [
+      replacement.name,
+      replacement.email ?? '',
+      replacement.phone ?? '',
+    ]),
+  ];
+
   const sheet = XLSX.utils.aoa_to_sheet(rows);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sheet, sheetName);
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Planning');
   XLSX.writeFile(workbook, fileName);
 };
 
-export interface ImportedPlanning {
-  /** Players with their play counts recomputed from the import. */
-  players: Player[];
+export interface ImportedPlanning extends ExportDocument {
   /** Play dates of the calendar, re-usable as `playDates` state. */
   playDates: Date[];
   gameDates: GameDate[];
@@ -48,20 +80,36 @@ interface ParsedRow {
   day: number;
 }
 
-const parseDateRow = (row: unknown[], year: number, month: number, day: number): ParsedRow => ({
-  row,
-  date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
-  year,
-  month,
-  day,
-});
+const SECTION = /^(players|replacements)$/i;
+
+const parsePlanDate = (value: string): Omit<ParsedRow, 'row'> | null => {
+  // Accept "2026-09-01" and "2026-09-01 (Monday)" (weekday suffix from exports).
+  const iso = value
+    .replace(/\s*\([a-z]+\)\s*$/i, '')
+    .match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) {
+    return {
+      date: `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`,
+      year: Number(iso[1]),
+      month: Number(iso[2]),
+      day: Number(iso[3]),
+    };
+  }
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return {
+      date: toDateKey(parsed),
+      year: parsed.getFullYear(),
+      month: parsed.getMonth() + 1,
+      day: parsed.getDate(),
+    };
+  }
+  return null;
+};
 
 /**
- * Parses a planning exported by this app (Excel or CSV) back into players,
- * play dates and the planning table.
- *
- * Expected layout: first column header "Date", then one column per player
- * (✅ = plays, ❌ = does not play).
+ * Parses an exported planning (Excel/CSV) back into the document meta,
+ * players (with contacts), replacements and the planning table.
  */
 export const importSpreadsheet = async (file: File): Promise<ImportedPlanning> => {
   const XLSX = await loadXlsx();
@@ -72,51 +120,60 @@ export const importSpreadsheet = async (file: File): Promise<ImportedPlanning> =
   if (!sheetName) {
     throw new Error('File contains no sheet');
   }
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], {
-    header: 1,
-    raw: false,
-    defval: '',
-  }) as unknown[][];
+  const rows = (
+    XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], {
+      header: 1,
+      raw: false,
+      defval: '',
+    }) as unknown[][]
+  ).map((row) => row.map((cell) => String(cell ?? '').trim()));
 
-  const header = rows[0] ?? [];
-  if (!/^date$/i.test(String(header[0] ?? '').trim()) || header.length < 2) {
+  const findRow = (pattern: RegExp, from = 0): number =>
+    rows.findIndex(
+      (row, idx) => idx >= from && pattern.test(String(row[0] ?? '')),
+    );
+
+  const planIdx = findRow(/^date$/i);
+  if (planIdx === -1) {
     throw new Error('Unrecognized format: expected a "Date" column followed by player columns');
   }
 
-  const playerNames = header
+  const title = planIdx > 0 ? rows[0][0] : '';
+  const description = planIdx > 1 ? rows[1][0] : '';
+
+  const playerNames = rows[planIdx]
     .slice(1)
-    .map((cell) => String(cell).trim().replace(/\s*\(\d+\)\s*$/, ''))
+    .map((name) => name.replace(/\s*\(\d+\)\s*$/, '').trim())
     .filter((name) => name !== '');
   if (new Set(playerNames).size !== playerNames.length) {
     throw new Error('Duplicate player names in the file');
   }
 
-  const isPlaying = (cell: unknown): boolean =>
-    ['✅', '✔', '✓', '1', 'true', 'yes', 'oui', 'x'].includes(
-      String(cell ?? '').trim().toLowerCase(),
-    );
-
-  const dateRows = rows
-    .slice(1)
-    .map((row) => {
-      const value = String(row[0] ?? '').trim();
-      const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      return match
-        ? parseDateRow(row, Number(match[1]), Number(match[2]), Number(match[3]))
-        : { row, date: value, year: 0, month: 0, day: 0 };
-    })
-    .filter((entry) => entry.date !== '');
+  // Planning rows: from the header row until the next marker/blank row.
+  const dateRows: ParsedRow[] = [];
+  const malformed: string[] = [];
+  for (let idx = planIdx + 1; idx < rows.length; idx += 1) {
+    const value = String(rows[idx][0] ?? '');
+    if (value === '' || SECTION.test(value)) break;
+    const parsed = parsePlanDate(value);
+    if (parsed) {
+      dateRows.push({ row: rows[idx], ...parsed });
+    } else {
+      malformed.push(value);
+    }
+  }
 
   if (dateRows.length === 0) {
     throw new Error('No play dates found in the file');
   }
-
-  const malformed = dateRows.filter((entry) => entry.year === 0);
   if (malformed.length > 0) {
     throw new Error(
-      `Unrecognized date format for: ${malformed.map((entry) => entry.date).join(', ')} (expected YYYY-MM-DD)`,
+      `Unrecognized date format for: ${malformed.join(', ')} (expected YYYY-MM-DD)`,
     );
   }
+
+  const playersIdx = findRow(/^players$/i);
+  const replacementsIdx = findRow(/^replacements$/i);
 
   const players: Player[] = playerNames.map((name, idx) => ({
     id: `import-${idx}`,
@@ -133,16 +190,62 @@ export const importSpreadsheet = async (file: File): Promise<ImportedPlanning> =
   gameDates.forEach((gd, rowIdx) => {
     const row = dateRows[rowIdx].row;
     gd.players.forEach((slot, playerIdx) => {
-      const player = players.find((candidate) => candidate.id === slot.id);
-      if (player && isPlaying(row[playerIdx + 1])) {
+      const raw = row[playerIdx + 1];
+      if (['✅', '✔', '✓', '1', 'true', 'yes', 'oui', 'x'].includes(
+        String(raw ?? '').trim().toLowerCase(),
+      )) {
         slot.isPlaying = true;
-        player.playCount += 1;
+        const player = players.find((candidate) => candidate.id === slot.id);
+        if (player) {
+          player.playCount += 1;
+        }
       }
     });
   });
 
+  // Players section: Name | Email | Phone | Games
+  if (playersIdx > planIdx) {
+    const sectionStart = playersIdx + 2;
+    for (let idx = sectionStart; idx < rows.length; idx += 1) {
+      const row = rows[idx];
+      const name = String(row[0] ?? '').trim();
+      if (name === '' || SECTION.test(name) || /^date$/i.test(name)) break;
+      const player = players.find(
+        (candidate) =>
+          candidate.name.toLowerCase() === name.toLowerCase() && !candidate.email,
+      );
+      if (player) {
+        player.email = String(row[1] ?? '').trim() || undefined;
+        player.phone = String(row[2] ?? '').trim() || undefined;
+        const games = Number(row[3]);
+        if (Number.isFinite(games) && games > player.playCount) {
+          player.playCount = games;
+        }
+      }
+    }
+  }
+
+  // Replacements section: Name | Email | Phone
+  const replacements: ReplacementPlayer[] = [];
+  if (replacementsIdx > planIdx) {
+    for (let idx = replacementsIdx + 2; idx < rows.length; idx += 1) {
+      const row = rows[idx];
+      const name = String(row[0] ?? '').trim();
+      if (name === '' || SECTION.test(name)) break;
+      replacements.push({
+        id: `import-r-${idx}`,
+        name,
+        email: String(row[1] ?? '').trim() || undefined,
+        phone: String(row[2] ?? '').trim() || undefined,
+      });
+    }
+  }
+
   return {
+    title,
+    description,
     players,
+    replacements,
     playDates: dateRows.map((entry) => new Date(entry.year, entry.month - 1, entry.day)),
     gameDates,
   };

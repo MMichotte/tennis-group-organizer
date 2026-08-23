@@ -36,6 +36,37 @@ body {
   flex-direction: column;
   margin: 2rem;
 
+  .document-form {
+    display: flex;
+    flex-wrap: wrap;
+    flex-direction: row;
+    justify-content: center;
+    max-width: 100%;
+
+    .document {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      max-width: 42rem;
+      margin: 1rem 2rem;
+
+      .document-row {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 0.5rem;
+
+        .title-input {
+          flex: 1;
+        }
+
+        .description-button {
+          white-space: nowrap;
+        }
+      }
+    }
+  }
+
   .settings {
     display: flex;
     flex-wrap: wrap;
@@ -59,14 +90,23 @@ body {
       }
 
       .player-from {
-        display: flex;
-        flex-wrap: wrap;
-        flex-direction: row;
         margin-bottom: 0.5rem;
-        
+
         .player-name {
           width: 15rem;
         }
+
+        .contact-input {
+          width: 17rem;
+          margin-right: 0.4rem;
+        }
+      }
+
+      .player-line {
+        display: flex;
+        flex-wrap: wrap;
+        flex-direction: row;
+        align-items: center;
 
         .rmdp-container {
           margin: 0 0.4rem;
@@ -89,6 +129,53 @@ body {
             border-color: #b5b5b5;
           }
         }
+
+        .details-toggle {
+          min-width: 2.5rem;
+        }
+      }
+
+      .player-contact-row {
+        display: flex;
+        flex-wrap: wrap;
+        flex-direction: row;
+        align-items: center;
+        margin-top: 0.3rem;
+        padding-left: 0.2rem;
+
+        .contact-input {
+          width: 17rem;
+          margin-right: 0.4rem;
+        }
+      }
+
+      .hint {
+        margin-top: 0.6rem;
+        font-size: 0.85rem;
+        color: #888;
+      }
+
+      .replacements {
+        margin-top: 1rem;
+        padding-top: 0.8rem;
+        border-top: 1px solid #dbdbdb;
+
+        .collapse-toggle {
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 0;
+          display: flex;
+          align-items: center;
+          font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+          font-size: larger;
+          color: #000;
+          margin-bottom: 0.4rem;
+
+          &:hover {
+            color: #b66a47;
+          }
+        }
       }
     }
   }
@@ -109,12 +196,13 @@ body {
     flex-wrap: wrap;
     flex-direction: row;
     justify-content: center;
-    width: 98%;
+    width: 100%;
 
     .result-container {
       margin: 1rem 0.5rem;
+      width: 100%;
+      max-width: 78rem;
       min-width: 50%;
-      max-width: 100%;
       overflow-x: auto;
     }
 
@@ -147,4 +235,80 @@ th, td {
 
 .fa-inline {
   margin-right: 0.4rem;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+
+.modal-box {
+  background: #fff;
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  width: min(34rem, 92vw);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+
+  .modal-title {
+    font-size: larger;
+    font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+    margin-bottom: 0.75rem;
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+}
+
+/* Deselect button ("×") on selected-date chips in both date pickers.
+   The plugin renders a rotated "+"; we turn it into a neat × chip with a
+   hover circle. Specificity + !important to beat the injected plugin styles. */
+.rmdp-panel-body li {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 4px;
+
+  div {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  > button.b-deselect {
+    background-color: transparent !important;
+    border-radius: 50%;
+    width: 1.05rem;
+    height: 1.05rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin: auto 2px auto 4px;
+    font-size: 1.05rem;
+    line-height: 1;
+    opacity: 0.7;
+    transition: opacity 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+
+    span {
+      display: block;
+      transform: rotate(45deg);
+      font-weight: 700;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    &:hover {
+      opacity: 1;
+      background-color: rgba(255, 255, 255, 0.35) !important;
+      transform: scale(1.15);
+    }
+  }
 }
