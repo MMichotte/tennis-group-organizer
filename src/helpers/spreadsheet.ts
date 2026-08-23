@@ -1,7 +1,27 @@
+import type { Locale } from '../i18n/translations';
+import { translations } from '../i18n/translations';
 import type { GameDate, Player, ReplacementPlayer } from '../types';
 import { toDateKey } from './dates';
 
 const loadXlsx = (): Promise<typeof import('xlsx')> => import('xlsx');
+
+export const SPREADSHEET_ERROR_CODES = {
+  NO_SHEET: 'errorNoSheet',
+  UNRECOGNIZED_FORMAT: 'errorUnrecognizedFormat',
+  DUPLICATE_NAMES: 'errorDuplicateNames',
+  NO_PLAY_DATES: 'errorNoPlayDates',
+  MALFORMED_DATES: 'errorMalformedDates',
+} as const;
+
+export class SpreadsheetError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly params?: Record<string, string>,
+  ) {
+    super(code);
+    this.name = 'SpreadsheetError';
+  }
+}
 
 const getTableElement = (htmlTableId: string): HTMLElement => {
   const tableElement = document.getElementById(htmlTableId);
@@ -18,6 +38,28 @@ export interface ExportDocument {
   replacements: ReplacementPlayer[];
 }
 
+// Marker labels in any supported language, so files can be imported
+// regardless of the language they were exported in.
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const markerPattern = (key: 'date' | 'players' | 'replacements'): RegExp => {
+  const values = Object.values(translations).map((catalog) => catalog[
+    key === 'date' ? 'dateHeader' : key === 'players' ? 'sectionPlayers' : 'sectionReplacements'
+  ]);
+  return new RegExp(`^(${values.map(escapeRegex).join('|')})$`, 'i');
+};
+
+const DATE_HEADER = markerPattern('date');
+const SECTION = new RegExp(
+  `^(${[...Object.values(translations).map((catalog) => catalog.sectionPlayers),
+    ...Object.values(translations).map((catalog) => catalog.sectionReplacements)]
+    .map(escapeRegex)
+    .join('|')})$`,
+  'i',
+);
+const PLAYERS_SECTION = markerPattern('players');
+const REPLACEMENTS_SECTION = markerPattern('replacements');
+
 /**
  * Exports the planning as an .xlsx file with the following layout:
  * title row, description row, planning table ("Date" + one column per player),
@@ -29,9 +71,11 @@ export const exportToExcel = async (
   htmlTableId: string,
   fileName: string,
   document: ExportDocument,
+  locale: Locale = 'en',
 ): Promise<void> => {
   const XLSX = await loadXlsx();
   const table = getTableElement(htmlTableId) as HTMLTableElement;
+  const t = translations[locale];
 
   const planningRows = Array.from(table.rows).map((row) =>
     Array.from(row.cells).map((cell) => (cell.textContent ?? '').trim()),
@@ -43,16 +87,16 @@ export const exportToExcel = async (
     [],
     ...planningRows,
     [],
-    ['Players'],
-    ['Name', 'Email', 'Phone', 'Games'],
+    [t.sectionPlayers],
+    [t.columnName, t.columnEmail, t.columnPhone, t.columnGames],
     ...document.players.map((player) => [
       player.name,
       player.email ?? '',
       player.phone ?? '',
       String(player.playCount),
     ]),
-    ['Replacements'],
-    ['Name', 'Email', 'Phone'],
+    [t.sectionReplacements],
+    [t.columnName, t.columnEmail, t.columnPhone],
     ...document.replacements.map((replacement) => [
       replacement.name,
       replacement.email ?? '',
@@ -79,8 +123,6 @@ interface ParsedRow {
   month: number;
   day: number;
 }
-
-const SECTION = /^(players|replacements)$/i;
 
 const parsePlanDate = (value: string): Omit<ParsedRow, 'row'> | null => {
   // Accept "2026-09-01" and "2026-09-01 (Monday)" (weekday suffix from exports).
@@ -110,6 +152,7 @@ const parsePlanDate = (value: string): Omit<ParsedRow, 'row'> | null => {
 /**
  * Parses an exported planning (Excel/CSV) back into the document meta,
  * players (with contacts), replacements and the planning table.
+ * The file can have been exported in any of the supported languages.
  */
 export const importSpreadsheet = async (file: File): Promise<ImportedPlanning> => {
   const XLSX = await loadXlsx();
@@ -118,7 +161,7 @@ export const importSpreadsheet = async (file: File): Promise<ImportedPlanning> =
 
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) {
-    throw new Error('File contains no sheet');
+    throw new SpreadsheetError(SPREADSHEET_ERROR_CODES.NO_SHEET);
   }
   const rows = (
     XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], {
@@ -133,9 +176,9 @@ export const importSpreadsheet = async (file: File): Promise<ImportedPlanning> =
       (row, idx) => idx >= from && pattern.test(String(row[0] ?? '')),
     );
 
-  const planIdx = findRow(/^date$/i);
+  const planIdx = findRow(DATE_HEADER);
   if (planIdx === -1) {
-    throw new Error('Unrecognized format: expected a "Date" column followed by player columns');
+    throw new SpreadsheetError(SPREADSHEET_ERROR_CODES.UNRECOGNIZED_FORMAT);
   }
 
   const title = planIdx > 0 ? rows[0][0] : '';
@@ -146,7 +189,7 @@ export const importSpreadsheet = async (file: File): Promise<ImportedPlanning> =
     .map((name) => name.replace(/\s*\(\d+\)\s*$/, '').trim())
     .filter((name) => name !== '');
   if (new Set(playerNames).size !== playerNames.length) {
-    throw new Error('Duplicate player names in the file');
+    throw new SpreadsheetError(SPREADSHEET_ERROR_CODES.DUPLICATE_NAMES);
   }
 
   // Planning rows: from the header row until the next marker/blank row.
@@ -164,16 +207,16 @@ export const importSpreadsheet = async (file: File): Promise<ImportedPlanning> =
   }
 
   if (dateRows.length === 0) {
-    throw new Error('No play dates found in the file');
+    throw new SpreadsheetError(SPREADSHEET_ERROR_CODES.NO_PLAY_DATES);
   }
   if (malformed.length > 0) {
-    throw new Error(
-      `Unrecognized date format for: ${malformed.join(', ')} (expected YYYY-MM-DD)`,
-    );
+    throw new SpreadsheetError(SPREADSHEET_ERROR_CODES.MALFORMED_DATES, {
+      dates: malformed.join(', '),
+    });
   }
 
-  const playersIdx = findRow(/^players$/i);
-  const replacementsIdx = findRow(/^replacements$/i);
+  const playersIdx = findRow(PLAYERS_SECTION);
+  const replacementsIdx = findRow(REPLACEMENTS_SECTION);
 
   const players: Player[] = playerNames.map((name, idx) => ({
     id: `import-${idx}`,
@@ -209,7 +252,7 @@ export const importSpreadsheet = async (file: File): Promise<ImportedPlanning> =
     for (let idx = sectionStart; idx < rows.length; idx += 1) {
       const row = rows[idx];
       const name = String(row[0] ?? '').trim();
-      if (name === '' || SECTION.test(name) || /^date$/i.test(name)) break;
+      if (name === '' || SECTION.test(name) || DATE_HEADER.test(name)) break;
       const player = players.find(
         (candidate) =>
           candidate.name.toLowerCase() === name.toLowerCase() && !candidate.email,

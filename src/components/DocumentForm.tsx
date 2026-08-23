@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { faAlignLeft } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 
+import { useI18n } from '../i18n/I18nContext';
+
 interface Props {
   title: string;
   description: string;
@@ -16,6 +18,7 @@ export const DocumentForm = ({
   onTitleChange,
   onDescriptionChange,
 }: Props) => {
+  const { t } = useI18n();
   const [descriptionOpen, setDescriptionOpen] = useState(false);
   const [draftDescription, setDraftDescription] = useState('');
 
@@ -37,7 +40,7 @@ export const DocumentForm = ({
             <input
               className="input title-input"
               type="text"
-              placeholder="Title *"
+              placeholder={t('titlePlaceholder')}
               maxLength={120}
               value={title}
               onChange={(event) => onTitleChange(event.target.value)}
@@ -45,11 +48,11 @@ export const DocumentForm = ({
             <button
               type="button"
               className="button description-button"
-              title={description ? 'Edit description' : 'Add description'}
+              title={description ? t('descriptionTitle') : t('addDescription')}
               onClick={onOpenDescription}
             >
               <FontAwesomeIcon className="fa-inline" icon={faAlignLeft} />
-              {description ? 'Description' : 'Add description'}
+              {description ? t('descriptionTitle') : t('addDescription')}
             </button>
           </div>
         </div>
@@ -65,10 +68,10 @@ export const DocumentForm = ({
           }}
         >
           <div className="modal-box">
-            <div className="modal-title">Description</div>
+            <div className="modal-title">{t('descriptionTitle')}</div>
             <textarea
               className="textarea description-input"
-              placeholder="Free text description (optional)"
+              placeholder={t('descriptionPlaceholder')}
               rows={6}
               autoFocus
               value={draftDescription}
@@ -76,10 +79,10 @@ export const DocumentForm = ({
             />
             <div className="modal-actions">
               <button type="button" className="button is-ghost" onClick={() => setDescriptionOpen(false)}>
-                Cancel
+                {t('cancel')}
               </button>
               <button type="button" className="button is-success" onClick={onSaveDescription}>
-                Save
+                {t('save')}
               </button>
             </div>
           </div>

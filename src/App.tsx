@@ -15,13 +15,16 @@ import './App.scss';
 
 import { CalendarForm } from './components/CalendarForm';
 import { DocumentForm } from './components/DocumentForm';
+import { LanguageSelect } from './components/LanguageSelect';
 import { PlanningTable } from './components/PlanningTable';
 import { PlayersForm } from './components/PlayersForm';
 import { ReplacementsForm } from './components/ReplacementsForm';
 import { toDateKey } from './helpers/dates';
 import { exportToPdf } from './helpers/export-to-pdf';
 import { generatePlanning } from './helpers/generate-planning';
-import { exportToExcel, importSpreadsheet } from './helpers/spreadsheet';
+import { exportToExcel, importSpreadsheet, SpreadsheetError } from './helpers/spreadsheet';
+import { useI18n } from './i18n/I18nContext';
+import type { MessageKey } from './i18n/translations';
 import { createPlayer, createReplacementPlayer } from './types';
 import type { GameDate, Player, ReplacementPlayer } from './types';
 
@@ -37,6 +40,7 @@ const toFileName = (title: string, extension: string): string => {
 };
 
 function App() {
+  const { locale, t } = useI18n();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [playDates, setPlayDates] = useState<Date[]>([]);
@@ -107,7 +111,7 @@ function App() {
       })();
 
       if (duplicateName) {
-        toast.error('Player names must be unique.', { autoClose: 5000 });
+        toast.error(t('toastUniqueNames'), { autoClose: 5000 });
         return;
       }
 
@@ -186,17 +190,23 @@ function App() {
     setGameDates(result.gameDates);
     setCanExport(true);
 
-    if (result.warnings.length > 0) {
+    if (result.shortages.length > 0) {
       toast.warn(
         <div>
-          {result.warnings.map((warning, idx) => (
-            <div key={idx}>{warning}</div>
+          {result.shortages.map((shortage, idx) => (
+            <div key={idx}>
+              {t('warningNotEnough', {
+                date: shortage.date,
+                scheduled: shortage.scheduled,
+                requested: shortage.requested,
+              })}
+            </div>
           ))}
         </div>,
         { autoClose: 10000 },
       );
     }
-  }, [gameDates, players, playersPerGame]);
+  }, [gameDates, players, playersPerGame, t]);
 
   const onExportExcel = useCallback(() => {
     exportToExcel('planning_table', toFileName(title, 'xlsx'), {
@@ -204,21 +214,22 @@ function App() {
       description,
       players,
       replacements,
-    }).catch((error) => {
+    }, locale).catch((error) => {
       console.error(error);
-      toast.error('Could not export the planning to Excel.', { autoClose: 5000 });
+      toast.error(t('toastExportExcelError'), { autoClose: 5000 });
     });
-  }, [description, players, replacements, title]);
+  }, [description, locale, players, replacements, title, t]);
 
   const onExportPdf = useCallback(() => {
     exportToPdf(
       { title, description, players, replacements, gameDates },
       toFileName(title, 'pdf'),
+      locale,
     ).catch((error) => {
       console.error(error);
-      toast.error('Could not export the planning to PDF.', { autoClose: 5000 });
+      toast.error(t('toastExportPdfError'), { autoClose: 5000 });
     });
-  }, [description, gameDates, players, replacements, title]);
+  }, [description, gameDates, locale, players, replacements, title, t]);
 
   const onImportFile = useCallback(
     async (input: React.ChangeEvent<HTMLInputElement>) => {
@@ -238,20 +249,25 @@ function App() {
         setGameDates(imported.gameDates);
         setCanExport(true);
         toast.success(
-          `Imported ${imported.gameDates.length} dates for ${imported.players.length} players.`,
+          t('toastImportSuccess', {
+            dates: imported.gameDates.length,
+            players: imported.players.length,
+          }),
           { autoClose: 5000 },
         );
       } catch (error) {
         console.error(error);
+        const message =
+          error instanceof SpreadsheetError
+            ? t(error.code as MessageKey, error.params)
+            : '';
         toast.error(
-          `Could not import the file. Use a planning exported by this app (Excel/CSV). ${
-            error instanceof Error ? error.message : ''
-          }`,
+          t('toastImportError', { message }),
           { autoClose: 7000 },
         );
       }
     },
-    [],
+    [t],
   );
 
   return (
@@ -269,6 +285,7 @@ function App() {
 
       <div className="header">
         <span>Tennis Group Organizer</span>
+        <LanguageSelect />
       </div>
 
       <div className="main-content">
@@ -288,7 +305,7 @@ function App() {
           />
 
           <div className="form-container players">
-            <div className="form-title">Players :</div>
+            <div className="form-title">{t('players')}</div>
             <PlayersForm
               players={players}
               openPlayerDetails={openPlayerDetails}
@@ -315,15 +332,15 @@ function App() {
         <div className="controls">
           <button className="button is-success" onClick={onGenerate} disabled={!canGenerate}>
             <FontAwesomeIcon className="fa-inline" icon={faWrench} />
-            Generate Planning
+            {t('generatePlanning')}
           </button>
           <button className="button is-info" onClick={onExportExcel} disabled={!canExport}>
             <FontAwesomeIcon className="fa-inline" icon={faDownload} />
-            Export to Excel
+            {t('exportExcel')}
           </button>
           <button className="button is-info" onClick={onExportPdf} disabled={!canExport}>
             <FontAwesomeIcon className="fa-inline" icon={faFilePdf} />
-            Export to PDF
+            {t('exportPdf')}
           </button>
           <input
             ref={fileInputRef}
@@ -337,7 +354,7 @@ function App() {
             onClick={() => fileInputRef.current?.click()}
           >
             <FontAwesomeIcon className="fa-inline" icon={faFileImport} />
-            Import Planning
+            {t('importPlanning')}
           </button>
         </div>
 

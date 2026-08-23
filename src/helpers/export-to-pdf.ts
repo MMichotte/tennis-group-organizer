@@ -1,5 +1,6 @@
+import type { Locale } from '../i18n/translations';
+import { translations, weekdayFor } from '../i18n/translations';
 import type { GameDate, Player, ReplacementPlayer } from '../types';
-import { toWeekdayName } from './dates';
 
 import type { UserOptions } from 'jspdf-autotable';
 
@@ -49,16 +50,18 @@ const baseStyles = (footer: (data: { pageNumber: number }) => void): Partial<Use
 export const exportToPdf = async (
   document: PdfDocument,
   fileName: string,
+  locale: Locale = 'en',
 ): Promise<void> => {
   const { jsPDF } = await import('jspdf');
   const { default: autoTable } = await import('jspdf-autotable');
+  const t = translations[locale];
 
   const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const contentWidth = pageWidth - MARGIN * 2;
 
-  const titleLines = pdf.splitTextToSize(document.title || 'Tennis Planning', contentWidth);
+  const titleLines = pdf.splitTextToSize(document.title || t.pdfTitleFallback, contentWidth);
   const descLines = document.description
     ? pdf.splitTextToSize(document.description, contentWidth)
     : [];
@@ -80,7 +83,11 @@ export const exportToPdf = async (
     .setFontSize(9)
     .setFont('helvetica', 'normal')
     .setTextColor(245, 250, 247);
-  pdf.text(`Generated on ${new Date().toLocaleDateString()}`, MARGIN, 44 + titleLines.length * 22);
+  pdf.text(
+    t.pdfGeneratedOn.replace('{date}', new Date().toLocaleDateString(locale)),
+    MARGIN,
+    44 + titleLines.length * 22,
+  );
   if (descLines.length) {
     pdf.setTextColor(255, 255, 255).setFontSize(10);
     pdf.text(descLines, MARGIN, 44 + titleLines.length * 22 + 16);
@@ -88,7 +95,11 @@ export const exportToPdf = async (
 
   const footer = (data: { pageNumber: number }): void => {
     pdf.setFontSize(8).setFont('helvetica', 'normal').setTextColor(...MUTED);
-    pdf.text(`Tennis Group Organizer — ${document.title || 'Tennis Planning'}`, MARGIN, pageHeight - 22);
+    pdf.text(
+      `Tennis Group Organizer — ${document.title || t.pdfTitleFallback}`,
+      MARGIN,
+      pageHeight - 22,
+    );
     pdf.text(String(data.pageNumber), pageWidth - MARGIN, pageHeight - 22, { align: 'right' });
   };
 
@@ -96,9 +107,9 @@ export const exportToPdf = async (
 
   // Planning matrix: ✅/❌ drawn as vector glyphs (emoji not available in PDF fonts)
   const playing = new Map<string, boolean>();
-  const planHead = ['Date', ...document.players.map((player) => player.name || '')];
+  const planHead = [t.dateHeader, ...document.players.map((player) => player.name || '')];
   const planBody = document.gameDates.map((gd, rowIdx) => [
-    `${gd.date} (${toWeekdayName(gd.date)})`,
+    `${gd.date} (${weekdayFor(locale, new Date(`${gd.date}T00:00:00`))})`,
     ...gd.players.map((slot, colIdx) => {
       playing.set(`${rowIdx}-${colIdx}`, slot.isPlaying);
       return '';
@@ -143,7 +154,7 @@ export const exportToPdf = async (
   autoTable(pdf, {
     ...baseStyles(footer),
     startY,
-    head: [['Players', 'Email', 'Phone', 'Games']],
+    head: [[t.sectionPlayers, t.columnEmail, t.columnPhone, t.columnGames]],
     body: document.players.map((player) => [
       player.name || '',
       player.email ?? '',
@@ -161,7 +172,7 @@ export const exportToPdf = async (
     autoTable(pdf, {
       ...baseStyles(footer),
       startY,
-      head: [['Replacements', 'Email', 'Phone']],
+      head: [[t.sectionReplacements, t.columnEmail, t.columnPhone]],
       body: document.replacements.map((replacement) => [
         replacement.name || '',
         replacement.email ?? '',

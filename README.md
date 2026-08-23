@@ -6,7 +6,8 @@ Web app to plan tennis games fairly across a group of players.
 - Register players and their excluded dates
 - Set how many players play per game
 - Generate a balanced planning (players with the lowest play count get picked first; excluded dates are honored)
-- Export the planning to **Excel (.xlsx)** — and import it back (Excel/CSV) to reload or continue editing a planning
+- Export the planning to **Excel (.xlsx)** or **PDF** — and import it back (Excel/CSV) to reload or continue editing a planning
+- Interface available in **English, French and Dutch** (language selector in the header; exports follow the selected language, imports accept any of them)
 
 ### How the planning is generated
 

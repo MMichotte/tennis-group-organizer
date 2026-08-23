@@ -3,10 +3,16 @@ import arrayShuffle from 'array-shuffle';
 import type { GameDate, Player } from '../types';
 import { toDateKey } from './dates';
 
+export interface Shortage {
+  date: string;
+  scheduled: number;
+  requested: number;
+}
+
 export interface PlanningResult {
   gameDates: GameDate[];
   players: Player[];
-  warnings: string[];
+  shortages: Shortage[];
 }
 
 interface Attempt {
@@ -110,7 +116,7 @@ export const generatePlanning = (
 ): PlanningResult => {
   const perGame = Math.max(1, Math.trunc(playersPerGame) || 1);
   if (!gameDates.length) {
-    return { gameDates: [], players, warnings: [] };
+    return { gameDates: [], players, shortages: [] };
   }
 
   const normalizedPlayers = players.map((player) => ({
@@ -127,12 +133,12 @@ export const generatePlanning = (
     }
   }
 
-  const warnings = best.gameDates.flatMap((gd) => {
+  const shortages: Shortage[] = best.gameDates.flatMap((gd) => {
     const scheduled = gd.players.filter((player) => player.isPlaying).length;
     return scheduled < perGame
-      ? [`Not enough available players for ${gd.date} - ${scheduled}/${perGame} scheduled`]
+      ? [{ date: gd.date, scheduled, requested: perGame }]
       : [];
   });
 
-  return { gameDates: best.gameDates, players: best.players, warnings };
+  return { gameDates: best.gameDates, players: best.players, shortages };
 };
