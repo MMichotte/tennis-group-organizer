@@ -48,7 +48,7 @@ export const CalendarForm = ({
         value={playDates}
         locale={calendarLocales[locale]}
         onChange={(dates) => onSetPlayDates(dates.map((date) => toDate(date)))}
-        plugins={[<DatePanel key="date-panel" />]}
+        plugins={[<DatePanel key="date-panel" header={t('panelDates')} />]}
       />
     </div>
   );

@@ -62,7 +62,7 @@ export const PlayersForm = ({
                   })
                 }
                 placeholder={t('excludeDates')}
-                plugins={[<DatePanel key="date-panel" />]}
+                plugins={[<DatePanel key="date-panel" header={t('panelDates')} />]}
               />
               <button
                 type="button"
